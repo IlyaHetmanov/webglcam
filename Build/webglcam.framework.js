@@ -2556,26 +2556,18 @@ function unityFramework(Module) {
             webcam.canvas = canvas
         }
         var video = document.createElement("video");
-        navigator.mediaDevices.getUserMedia({
-            audio: false,
-            video: true
-        }).then((stream) => {
-            stream.getVideoTracks()[0].onended = ()=> console.log("ended");
-            var video = document.createElement('video');
-            //video.playsInline = true;
+        navigator.mediaDevices.getUserMedia({video: true, audio: false}, (function (stream) {
             video.setAttribute('playsinline', true);
             video.srcObject = stream;
+            
+            webcam.canvas.appendChild(video);
             video.play();
-            var canvas = document.querySelector('canvas');
-            var c2d = canvas.getContext('2d');
-            function draw() {
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
-                c2d.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
-                requestAnimationFrame(draw);
-            }
-            requestAnimationFrame(draw);
-        });
+            MediaDevices[deviceId].video = video;
+            MediaDevices[deviceId].stream = stream;
+            MediaDevices[deviceId].refCount++
+        }), (function (err) {
+            console.log("An error occurred! " + err)
+        }))
     }
 
     function _JS_WebCamVideo_Stop(deviceId) {
