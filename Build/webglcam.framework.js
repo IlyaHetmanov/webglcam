@@ -317,20 +317,7 @@ function unityFramework(Module) {
             debugger
         })
     };
-    var jsCallStartIndex = 1;
     var functionPointers = new Array(0);
-
-    function addFunction(func, sig) {
-        var base = 0;
-        for (var i = base; i < base + 0; i++) {
-            if (!functionPointers[i]) {
-                functionPointers[i] = func;
-                return jsCallStartIndex + i
-            }
-        }
-        throw"Finished up all reserved function pointers. Use a higher value for RESERVED_FUNCTION_POINTERS."
-    }
-
     var funcWrappers = {};
 
     function getFuncWrapper(func, sig) {
@@ -1228,7 +1215,7 @@ function unityFramework(Module) {
     }
 
     STATIC_BASE = GLOBAL_BASE;
-    STATICTOP = STATIC_BASE + 2154736;
+    STATICTOP = STATIC_BASE + 2337552;
     __ATINIT__.push({
         func: (function () {
             __GLOBAL__sub_I_AccessibilityScriptingClasses_cpp()
@@ -1615,7 +1602,7 @@ function unityFramework(Module) {
         })
     }, {
         func: (function () {
-            ___cxx_global_var_init_7695()
+            __GLOBAL__sub_I_Runtime_Shaders_0_cpp()
         })
     }, {
         func: (function () {
@@ -1623,11 +1610,15 @@ function unityFramework(Module) {
         })
     }, {
         func: (function () {
-            __GLOBAL__sub_I_Runtime_Shaders_3_cpp()
+            ___cxx_global_var_init_62()
         })
     }, {
         func: (function () {
-            __GLOBAL__sub_I_Runtime_Shaders_GpuPrograms_0_cpp()
+            __GLOBAL__sub_I_Runtime_Shaders_4_cpp()
+        })
+    }, {
+        func: (function () {
+            __GLOBAL__sub_I_Runtime_Shaders_5_cpp()
         })
     }, {
         func: (function () {
@@ -1639,7 +1630,7 @@ function unityFramework(Module) {
         })
     }, {
         func: (function () {
-            ___cxx_global_var_init_8852()
+            ___cxx_global_var_init_8889()
         })
     }, {
         func: (function () {
@@ -1655,7 +1646,7 @@ function unityFramework(Module) {
         })
     }, {
         func: (function () {
-            ___cxx_global_var_init_9248()
+            ___cxx_global_var_init_9298()
         })
     }, {
         func: (function () {
@@ -1683,7 +1674,7 @@ function unityFramework(Module) {
         })
     }, {
         func: (function () {
-            ___cxx_global_var_init_18_1173()
+            ___cxx_global_var_init_18_1176()
         })
     }, {
         func: (function () {
@@ -1827,7 +1818,7 @@ function unityFramework(Module) {
         })
     }, {
         func: (function () {
-            ___cxx_global_var_init_3785()
+            ___cxx_global_var_init_3804()
         })
     }, {
         func: (function () {
@@ -2146,7 +2137,7 @@ function unityFramework(Module) {
             ___emscripten_environ_constructor()
         })
     });
-    var STATIC_BUMP = 2154736;
+    var STATIC_BUMP = 2337552;
     Module["STATIC_BASE"] = STATIC_BASE;
     Module["STATIC_BUMP"] = STATIC_BUMP;
     var tempDoublePtr = STATICTOP;
@@ -2230,7 +2221,32 @@ function unityFramework(Module) {
         return lengthBytesUTF8(trace)
     }
 
-    var WEBAudio = {audioInstances: [], audioContext: {}, audioWebEnabled: 0};
+    var JS_ScreenOrientation_callback = 0;
+
+    function JS_ScreenOrientation_eventHandler() {
+        if (JS_ScreenOrientation_callback) dynCall_viii(JS_ScreenOrientation_callback, window.innerWidth, window.innerHeight, screen.orientation ? screen.orientation.angle : window.orientation)
+    }
+
+    function _JS_ScreenOrientation_DeInit() {
+        JS_ScreenOrientation_callback = 0;
+        window.removeEventListener("resize", JS_ScreenOrientation_eventHandler);
+        if (screen.orientation) {
+            screen.orientation.removeEventListener("change", JS_ScreenOrientation_eventHandler)
+        }
+    }
+
+    function _JS_ScreenOrientation_Init(callback) {
+        if (!JS_ScreenOrientation_callback) {
+            if (screen.orientation) {
+                screen.orientation.addEventListener("change", JS_ScreenOrientation_eventHandler)
+            }
+            window.addEventListener("resize", JS_ScreenOrientation_eventHandler);
+            JS_ScreenOrientation_callback = callback;
+            setTimeout(JS_ScreenOrientation_eventHandler, 0)
+        }
+    }
+
+    var WEBAudio = {audioInstanceIdCounter: 0, audioInstances: {}, audioContext: null, audioWebEnabled: 0};
 
     function _JS_Sound_Create_Channel(callback, userData) {
         if (WEBAudio.audioWebEnabled == 0) return;
@@ -2238,22 +2254,88 @@ function unityFramework(Module) {
             gain: WEBAudio.audioContext.createGain(),
             panner: WEBAudio.audioContext.createPanner(),
             threeD: false,
-            playBuffer: (function (delay, buffer, offset) {
+            playBuffer: (function (startTime, buffer, startOffset) {
+                this.setup();
                 this.source.buffer = buffer;
                 var chan = this;
                 this.source.onended = (function () {
-                    if (callback) dynCall("vi", callback, [userData]);
-                    chan.setup()
+                    chan.disconnectSource();
+                    if (callback) dynCall("vi", callback, [userData])
                 });
-                this.source.start(delay, offset)
+                this.source.start(startTime, startOffset);
+                this.source.playbackStartTime = startTime - startOffset / this.source.playbackRate.value
+            }),
+            disconnectSource: (function () {
+                if (this.source && !this.source.isPausedMockNode) {
+                    this.source.onended = null;
+                    this.source.disconnect();
+                    delete this.source
+                }
+            }),
+            stop: (function (delay) {
+                if (channel.source && channel.source.buffer) {
+                    try {
+                        channel.source.stop(WEBAudio.audioContext.currentTime + delay)
+                    } catch (e) {
+                    }
+                    if (delay == 0) {
+                        channel.disconnectSource()
+                    }
+                }
+            }),
+            pause: (function () {
+                var s = this.source;
+                if (!s) return;
+                var pausedSource = {
+                    isPausedMockNode: true,
+                    loop: s.loop,
+                    loopStart: s.loopStart,
+                    loopEnd: s.loopEnd,
+                    buffer: s.buffer,
+                    playbackRate: s.playbackRate.value,
+                    playbackPausedAtPosition: s.estimatePlaybackPosition(),
+                    setPitch: (function (v) {
+                        this.playbackRate = v
+                    })
+                };
+                this.stop(0);
+                this.disconnectSource();
+                this.source = pausedSource
+            }),
+            resume: (function () {
+                var pausedSource = this.source;
+                if (!pausedSource || !pausedSource.isPausedMockNode) return;
+                delete this.source;
+                this.setup();
+                this.playBuffer(WEBAudio.audioContext.currentTime - Math.min(0, pausedSource.playbackPausedAtPosition), pausedSource.buffer, Math.max(0, pausedSource.playbackPausedAtPosition));
+                this.source.loop = pausedSource.loop;
+                this.source.loopStart = pausedSource.loopStart;
+                this.source.loopEnd = pausedSource.loopEnd;
+                this.source.setPitch(pausedSource.playbackRate)
             }),
             setup: (function () {
+                if (this.source && !this.source.isPausedMockNode) return;
                 this.source = WEBAudio.audioContext.createBufferSource();
+                this.source.estimatePlaybackPosition = (function () {
+                    var t = (WEBAudio.audioContext.currentTime - this.playbackStartTime) * this.playbackRate.value;
+                    if (this.loop && t >= this.loopStart) {
+                        t = (t - this.loopStart) % (this.loopEnd - this.loopStart) + this.loopStart
+                    }
+                    return t
+                });
+                this.source.setPitch = (function (newPitch) {
+                    var curPosition = this.estimatePlaybackPosition();
+                    if (curPosition >= 0) {
+                        this.playbackStartTime = WEBAudio.audioContext.currentTime - curPosition / newPitch
+                    }
+                    this.playbackRate.value = newPitch
+                });
                 this.setupPanning()
             }),
             setupPanning: (function () {
+                if (this.source.isPausedMockNode) return;
+                this.source.disconnect();
                 if (this.threeD) {
-                    this.source.disconnect();
                     this.source.connect(this.panner);
                     this.panner.connect(this.gain)
                 } else {
@@ -2264,8 +2346,8 @@ function unityFramework(Module) {
         };
         channel.panner.rolloffFactor = 0;
         channel.gain.connect(WEBAudio.audioContext.destination);
-        channel.setup();
-        return WEBAudio.audioInstances.push(channel) - 1
+        WEBAudio.audioInstances[++WEBAudio.audioInstanceIdCounter] = channel;
+        return WEBAudio.audioInstanceIdCounter
     }
 
     function _JS_Sound_GetLength(bufferInstance) {
@@ -2300,7 +2382,7 @@ function unityFramework(Module) {
     function _JS_Sound_Load(ptr, length) {
         if (WEBAudio.audioWebEnabled == 0) return 0;
         var sound = {buffer: null, error: false};
-        var instance = WEBAudio.audioInstances.push(sound) - 1;
+        WEBAudio.audioInstances[++WEBAudio.audioInstanceIdCounter] = sound;
         var audioData = HEAPU8.buffer.slice(ptr, ptr + length);
         WEBAudio.audioContext.decodeAudioData(audioData, (function (buffer) {
             sound.buffer = buffer
@@ -2308,7 +2390,7 @@ function unityFramework(Module) {
             sound.error = true;
             console.log("Decode error.")
         }));
-        return instance
+        return WEBAudio.audioInstanceIdCounter
     }
 
     function _JS_Sound_Load_PCM(channels, length, sampleRate, ptr) {
@@ -2323,8 +2405,8 @@ function unityFramework(Module) {
             });
             copyToChannel.apply(buffer, [HEAPF32.subarray(offs, offs + length), i, 0])
         }
-        var instance = WEBAudio.audioInstances.push(sound) - 1;
-        return instance
+        WEBAudio.audioInstances[++WEBAudio.audioInstanceIdCounter] = sound;
+        return WEBAudio.audioInstanceIdCounter
     }
 
     function _JS_Sound_Play(bufferInstance, channelInstance, offset, delay) {
@@ -2342,7 +2424,7 @@ function unityFramework(Module) {
     }
 
     function _JS_Sound_ReleaseInstance(instance) {
-        WEBAudio.audioInstances[instance] = null
+        delete WEBAudio.audioInstances[instance]
     }
 
     function _JS_Sound_ResumeIfNeeded() {
@@ -2354,6 +2436,9 @@ function unityFramework(Module) {
         var channel = WEBAudio.audioInstances[channelInstance];
         if (channel.threeD != threeD) {
             channel.threeD = threeD;
+            if (!channel.source) {
+                channel.setup()
+            }
             channel.setupPanning()
         }
     }
@@ -2385,20 +2470,36 @@ function unityFramework(Module) {
 
     function _JS_Sound_SetLoop(channelInstance, loop) {
         if (WEBAudio.audioWebEnabled == 0) return;
-        WEBAudio.audioInstances[channelInstance].source.loop = loop
+        var channel = WEBAudio.audioInstances[channelInstance];
+        if (!channel.source) {
+            channel.setup()
+        }
+        channel.source.loop = loop
     }
 
     function _JS_Sound_SetLoopPoints(channelInstance, loopStart, loopEnd) {
         if (WEBAudio.audioWebEnabled == 0) return;
         var channel = WEBAudio.audioInstances[channelInstance];
+        if (!channel.source) {
+            channel.setup()
+        }
         channel.source.loopStart = loopStart;
         channel.source.loopEnd = loopEnd
+    }
+
+    function _JS_Sound_SetPaused(channelInstance, paused) {
+        if (WEBAudio.audioWebEnabled == 0) return;
+        var channel = WEBAudio.audioInstances[channelInstance];
+        var channelCurrentlyPaused = !channel.source || channel.source.isPausedMockNode;
+        if (paused != channelCurrentlyPaused) {
+            if (paused) channel.pause(); else channel.resume()
+        }
     }
 
     function _JS_Sound_SetPitch(channelInstance, v) {
         if (WEBAudio.audioWebEnabled == 0) return;
         try {
-            WEBAudio.audioInstances[channelInstance].source.playbackRate.setValueAtTime(v, WEBAudio.audioContext.currentTime)
+            WEBAudio.audioInstances[channelInstance].source.setPitch(v)
         } catch (e) {
             console.error("Invalid audio pitch " + v + " specified to WebAudio backend!")
         }
@@ -2406,7 +2507,13 @@ function unityFramework(Module) {
 
     function _JS_Sound_SetPosition(channelInstance, x, y, z) {
         if (WEBAudio.audioWebEnabled == 0) return;
-        WEBAudio.audioInstances[channelInstance].panner.setPosition(x, y, z)
+        var channel = WEBAudio.audioInstances[channelInstance];
+        if (channel.x != x || channel.y != y || channel.z != z) {
+            channel.panner.setPosition(x, y, z);
+            channel.x = x;
+            channel.y = y;
+            channel.z = z
+        }
     }
 
     function _JS_Sound_SetVolume(channelInstance, v) {
@@ -2421,25 +2528,20 @@ function unityFramework(Module) {
     function _JS_Sound_Stop(channelInstance, delay) {
         if (WEBAudio.audioWebEnabled == 0) return;
         var channel = WEBAudio.audioInstances[channelInstance];
-        if (channel.source.buffer) {
-            try {
-                channel.source.stop(WEBAudio.audioContext.currentTime + delay)
-            } catch (e) {
-                channel.source.disconnect()
-            }
-            if (delay == 0) {
-                channel.source.onended = (function () {
-                });
-                channel.setup()
-            }
-        }
+        channel.stop(delay)
     }
 
     function _JS_SystemInfo_GetCanvasClientSize(domElementSelector, outWidth, outHeight) {
         var selector = UTF8ToString(domElementSelector);
         var canvas = selector == "#canvas" ? Module["canvas"] : document.querySelector(selector);
-        HEAPF64[outWidth >> 3] = canvas ? canvas.clientWidth : 0;
-        HEAPF64[outHeight >> 3] = canvas ? canvas.clientHeight : 0
+        var w = 0, h = 0;
+        if (canvas) {
+            var size = canvas.getBoundingClientRect();
+            w = size.width;
+            h = size.height
+        }
+        HEAPF64[outWidth >> 3] = w;
+        HEAPF64[outHeight >> 3] = h
     }
 
     function _JS_SystemInfo_GetDocumentURL(buffer, bufferSize) {
@@ -2556,18 +2658,26 @@ function unityFramework(Module) {
             webcam.canvas = canvas
         }
         var video = document.createElement("video");
-        navigator.mediaDevices.getUserMedia({video: true, audio: false}, (function (stream) {
+        navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: true
+        }).then((stream) => {
+            stream.getVideoTracks()[0].onended = ()=> console.log("ended");
+            var video = document.createElement('video');
+            //video.playsInline = true;
             video.setAttribute('playsinline', true);
             video.srcObject = stream;
-            
-            webcam.canvas.appendChild(video);
             video.play();
-            MediaDevices[deviceId].video = video;
-            MediaDevices[deviceId].stream = stream;
-            MediaDevices[deviceId].refCount++
-        }), (function (err) {
-            console.log("An error occurred! " + err)
-        }))
+            var canvas = document.querySelector('canvas');
+            var c2d = canvas.getContext('2d');
+            function draw() {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                c2d.drawImage(video, 0, 0, video.videoWidth, video.videoHeight);
+                requestAnimationFrame(draw);
+            }
+            requestAnimationFrame(draw);
+        });
     }
 
     function _JS_WebCamVideo_Stop(deviceId) {
@@ -2585,7 +2695,7 @@ function unityFramework(Module) {
     }
 
     function _JS_WebCam_IsSupported() {
-        var getMedia = navigator.mediaDevices.getUserMedia || navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+        var getMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
         return getMedia != null
     }
 
@@ -6668,119 +6778,18 @@ function unityFramework(Module) {
         return time1 - time0
     }
 
-    var DLFCN = {error: null, errorMsg: null, loadedLibs: {}, loadedLibNames: {}};
-
     function _dlclose(handle) {
-        if (!DLFCN.loadedLibs[handle]) {
-            DLFCN.errorMsg = "Tried to dlclose() unopened handle: " + handle;
-            return 1
-        } else {
-            var lib_record = DLFCN.loadedLibs[handle];
-            if (--lib_record.refcount == 0) {
-                if (lib_record.module.cleanups) {
-                    lib_record.module.cleanups.forEach((function (cleanup) {
-                        cleanup()
-                    }))
-                }
-                delete DLFCN.loadedLibNames[lib_record.name];
-                delete DLFCN.loadedLibs[handle]
-            }
-            return 0
-        }
+    }
+
+    function _dlerror() {
+        return 0
     }
 
     function _dlopen(filename, flag) {
-        abort("To use dlopen, you need to use Emscripten's linking support, see https://github.com/kripken/emscripten/wiki/Linking");
-        var searchpaths = [];
-        if (filename === 0) {
-            filename = "__self__"
-        } else {
-            var strfilename = Pointer_stringify(filename);
-            var isValidFile = (function (filename) {
-                var target = FS.findObject(filename);
-                return target && !target.isFolder && !target.isDevice
-            });
-            if (isValidFile(strfilename)) {
-                filename = strfilename
-            } else {
-                if (ENV["LD_LIBRARY_PATH"]) {
-                    searchpaths = ENV["LD_LIBRARY_PATH"].split(":")
-                }
-                for (var ident in searchpaths) {
-                    var searchfile = PATH.join2(searchpaths[ident], strfilename);
-                    if (isValidFile(searchfile)) {
-                        filename = searchfile;
-                        break
-                    }
-                }
-            }
-        }
-        if (DLFCN.loadedLibNames[filename]) {
-            var handle = DLFCN.loadedLibNames[filename];
-            DLFCN.loadedLibs[handle].refcount++;
-            return handle
-        }
-        var lib_module;
-        if (filename === "__self__") {
-            var handle = -1;
-            lib_module = Module
-        } else {
-            if (Module["preloadedWasm"] !== undefined && Module["preloadedWasm"][filename] !== undefined) {
-                lib_module = Module["preloadedWasm"][filename]
-            } else {
-                var target = FS.findObject(filename);
-                if (!target || target.isFolder || target.isDevice) {
-                    DLFCN.errorMsg = "Could not find dynamic lib: " + filename;
-                    return 0
-                }
-                FS.forceLoadFile(target);
-                try {
-                    var lib_data = FS.readFile(filename, {encoding: "binary"});
-                    if (!(lib_data instanceof Uint8Array)) lib_data = new Uint8Array(lib_data);
-                    lib_module = loadWebAssemblyModule(lib_data)
-                } catch (e) {
-                    DLFCN.errorMsg = "Could not evaluate dynamic lib: " + filename + "\n" + e;
-                    return 0
-                }
-            }
-            var handle = 1;
-            for (var key in DLFCN.loadedLibs) {
-                if (DLFCN.loadedLibs.hasOwnProperty(key)) handle++
-            }
-            if (flag & 256) {
-                for (var ident in lib_module) {
-                    if (lib_module.hasOwnProperty(ident)) {
-                        if (ident[0] == "_") {
-                            Module[ident] = lib_module[ident]
-                        }
-                    }
-                }
-            }
-        }
-        DLFCN.loadedLibs[handle] = {refcount: 1, name: filename, module: lib_module};
-        DLFCN.loadedLibNames[filename] = handle;
-        return handle
     }
 
     function _dlsym(handle, symbol) {
-        symbol = Pointer_stringify(symbol);
-        if (!DLFCN.loadedLibs[handle]) {
-            DLFCN.errorMsg = "Tried to dlsym() from an unopened handle: " + handle;
-            return 0
-        } else {
-            var lib = DLFCN.loadedLibs[handle];
-            symbol = "_" + symbol;
-            if (!lib.module.hasOwnProperty(symbol)) {
-                DLFCN.errorMsg = 'Tried to lookup unknown symbol "' + symbol + '" in dynamic lib: ' + lib.name;
-                return 0
-            } else {
-                var result = lib.module[symbol];
-                if (typeof result === "function") {
-                    return addFunction(result)
-                }
-                return result
-            }
-        }
+        return 0
     }
 
     function _emscripten_set_main_loop_timing(mode, value) {
@@ -8441,11 +8450,6 @@ function unityFramework(Module) {
         if (!JSEvents.lastGamepadState[index]) return -7;
         JSEvents.fillGamepadEventData(gamepadState, JSEvents.lastGamepadState[index]);
         return 0
-    }
-
-    function _emscripten_get_main_loop_timing(mode, value) {
-        if (mode) HEAP32[mode >> 2] = Browser.mainLoop.timingMode;
-        if (value) HEAP32[value >> 2] = Browser.mainLoop.timingValue
     }
 
     function _emscripten_get_num_gamepads() {
@@ -12246,8 +12250,8 @@ function unityFramework(Module) {
         return u8array
     }
 
-    Module["wasmTableSize"] = 47767;
-    Module["wasmMaxTableSize"] = 47767;
+    Module["wasmTableSize"] = 51825;
+    Module["wasmMaxTableSize"] = 51825;
 
     function invoke_dddi(index, a1, a2, a3) {
         var sp = stackSave();
@@ -12513,6 +12517,17 @@ function unityFramework(Module) {
         }
     }
 
+    function invoke_fiiffi(index, a1, a2, a3, a4, a5) {
+        var sp = stackSave();
+        try {
+            return Module["dynCall_fiiffi"](index, a1, a2, a3, a4, a5)
+        } catch (e) {
+            stackRestore(sp);
+            if (typeof e !== "number" && e !== "longjmp") throw e;
+            Module["setThrew"](1, 0)
+        }
+    }
+
     function invoke_fiifi(index, a1, a2, a3, a4) {
         var sp = stackSave();
         try {
@@ -12733,17 +12748,6 @@ function unityFramework(Module) {
         }
     }
 
-    function invoke_iifiii(index, a1, a2, a3, a4, a5) {
-        var sp = stackSave();
-        try {
-            return Module["dynCall_iifiii"](index, a1, a2, a3, a4, a5)
-        } catch (e) {
-            stackRestore(sp);
-            if (typeof e !== "number" && e !== "longjmp") throw e;
-            Module["setThrew"](1, 0)
-        }
-    }
-
     function invoke_iii(index, a1, a2) {
         var sp = stackSave();
         try {
@@ -12825,6 +12829,17 @@ function unityFramework(Module) {
         var sp = stackSave();
         try {
             return Module["dynCall_iiii"](index, a1, a2, a3)
+        } catch (e) {
+            stackRestore(sp);
+            if (typeof e !== "number" && e !== "longjmp") throw e;
+            Module["setThrew"](1, 0)
+        }
+    }
+
+    function invoke_iiiifi(index, a1, a2, a3, a4, a5) {
+        var sp = stackSave();
+        try {
+            return Module["dynCall_iiiifi"](index, a1, a2, a3, a4, a5)
         } catch (e) {
             stackRestore(sp);
             if (typeof e !== "number" && e !== "longjmp") throw e;
@@ -13184,17 +13199,6 @@ function unityFramework(Module) {
         }
     }
 
-    function invoke_iijjiii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
-        var sp = stackSave();
-        try {
-            return Module["dynCall_iijjiii"](index, a1, a2, a3, a4, a5, a6, a7, a8)
-        } catch (e) {
-            stackRestore(sp);
-            if (typeof e !== "number" && e !== "longjmp") throw e;
-            Module["setThrew"](1, 0)
-        }
-    }
-
     function invoke_iijjji(index, a1, a2, a3, a4, a5, a6, a7, a8) {
         var sp = stackSave();
         try {
@@ -13536,6 +13540,17 @@ function unityFramework(Module) {
         }
     }
 
+    function invoke_vffi(index, a1, a2, a3) {
+        var sp = stackSave();
+        try {
+            Module["dynCall_vffi"](index, a1, a2, a3)
+        } catch (e) {
+            stackRestore(sp);
+            if (typeof e !== "number" && e !== "longjmp") throw e;
+            Module["setThrew"](1, 0)
+        }
+    }
+
     function invoke_vfi(index, a1, a2) {
         var sp = stackSave();
         try {
@@ -13712,6 +13727,17 @@ function unityFramework(Module) {
         }
     }
 
+    function invoke_vififiii(index, a1, a2, a3, a4, a5, a6, a7) {
+        var sp = stackSave();
+        try {
+            Module["dynCall_vififiii"](index, a1, a2, a3, a4, a5, a6, a7)
+        } catch (e) {
+            stackRestore(sp);
+            if (typeof e !== "number" && e !== "longjmp") throw e;
+            Module["setThrew"](1, 0)
+        }
+    }
+
     function invoke_vifii(index, a1, a2, a3, a4) {
         var sp = stackSave();
         try {
@@ -13833,6 +13859,17 @@ function unityFramework(Module) {
         }
     }
 
+    function invoke_viififii(index, a1, a2, a3, a4, a5, a6, a7) {
+        var sp = stackSave();
+        try {
+            Module["dynCall_viififii"](index, a1, a2, a3, a4, a5, a6, a7)
+        } catch (e) {
+            stackRestore(sp);
+            if (typeof e !== "number" && e !== "longjmp") throw e;
+            Module["setThrew"](1, 0)
+        }
+    }
+
     function invoke_viifii(index, a1, a2, a3, a4, a5) {
         var sp = stackSave();
         try {
@@ -13914,6 +13951,17 @@ function unityFramework(Module) {
         var sp = stackSave();
         try {
             Module["dynCall_viiifi"](index, a1, a2, a3, a4, a5)
+        } catch (e) {
+            stackRestore(sp);
+            if (typeof e !== "number" && e !== "longjmp") throw e;
+            Module["setThrew"](1, 0)
+        }
+    }
+
+    function invoke_viiififii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
+        var sp = stackSave();
+        try {
+            Module["dynCall_viiififii"](index, a1, a2, a3, a4, a5, a6, a7, a8)
         } catch (e) {
             stackRestore(sp);
             if (typeof e !== "number" && e !== "longjmp") throw e;
@@ -14383,6 +14431,17 @@ function unityFramework(Module) {
         }
     }
 
+    function invoke_vji(index, a1, a2, a3) {
+        var sp = stackSave();
+        try {
+            Module["dynCall_vji"](index, a1, a2, a3)
+        } catch (e) {
+            stackRestore(sp);
+            if (typeof e !== "number" && e !== "longjmp") throw e;
+            Module["setThrew"](1, 0)
+        }
+    }
+
     function invoke_vjiiii(index, a1, a2, a3, a4, a5, a6) {
         var sp = stackSave();
         try {
@@ -14436,6 +14495,7 @@ function unityFramework(Module) {
         "invoke_fifi": invoke_fifi,
         "invoke_fifii": invoke_fifii,
         "invoke_fii": invoke_fii,
+        "invoke_fiiffi": invoke_fiiffi,
         "invoke_fiifi": invoke_fiifi,
         "invoke_fiifii": invoke_fiifii,
         "invoke_fiii": invoke_fiii,
@@ -14456,7 +14516,6 @@ function unityFramework(Module) {
         "invoke_iiffi": invoke_iiffi,
         "invoke_iifi": invoke_iifi,
         "invoke_iifii": invoke_iifii,
-        "invoke_iifiii": invoke_iifiii,
         "invoke_iii": invoke_iii,
         "invoke_iiif": invoke_iiif,
         "invoke_iiiff": invoke_iiiff,
@@ -14465,6 +14524,7 @@ function unityFramework(Module) {
         "invoke_iiifiii": invoke_iiifiii,
         "invoke_iiifiiii": invoke_iiifiiii,
         "invoke_iiii": invoke_iiii,
+        "invoke_iiiifi": invoke_iiiifi,
         "invoke_iiiifii": invoke_iiiifii,
         "invoke_iiiifiii": invoke_iiiifiii,
         "invoke_iiiifiiii": invoke_iiiifiiii,
@@ -14497,7 +14557,6 @@ function unityFramework(Module) {
         "invoke_iijiii": invoke_iijiii,
         "invoke_iijji": invoke_iijji,
         "invoke_iijjii": invoke_iijjii,
-        "invoke_iijjiii": invoke_iijjiii,
         "invoke_iijjji": invoke_iijjji,
         "invoke_ij": invoke_ij,
         "invoke_iji": invoke_iji,
@@ -14529,6 +14588,7 @@ function unityFramework(Module) {
         "invoke_vf": invoke_vf,
         "invoke_vff": invoke_vff,
         "invoke_vffff": invoke_vffff,
+        "invoke_vffi": invoke_vffi,
         "invoke_vfi": invoke_vfi,
         "invoke_vi": invoke_vi,
         "invoke_vid": invoke_vid,
@@ -14545,6 +14605,7 @@ function unityFramework(Module) {
         "invoke_viffii": invoke_viffii,
         "invoke_viffiii": invoke_viffiii,
         "invoke_vifi": invoke_vifi,
+        "invoke_vififiii": invoke_vififiii,
         "invoke_vifii": invoke_vifii,
         "invoke_vii": invoke_vii,
         "invoke_viid": invoke_viid,
@@ -14556,6 +14617,7 @@ function unityFramework(Module) {
         "invoke_viiffi": invoke_viiffi,
         "invoke_viiffii": invoke_viiffii,
         "invoke_viifi": invoke_viifi,
+        "invoke_viififii": invoke_viififii,
         "invoke_viifii": invoke_viifii,
         "invoke_viifiii": invoke_viifiii,
         "invoke_viifiiii": invoke_viifiiii,
@@ -14564,6 +14626,7 @@ function unityFramework(Module) {
         "invoke_viiifffi": invoke_viiifffi,
         "invoke_viiiffi": invoke_viiiffi,
         "invoke_viiifi": invoke_viiifi,
+        "invoke_viiififii": invoke_viiififii,
         "invoke_viiifii": invoke_viiifii,
         "invoke_viiii": invoke_viiii,
         "invoke_viiiif": invoke_viiiif,
@@ -14606,8 +14669,10 @@ function unityFramework(Module) {
         "invoke_vijijji": invoke_vijijji,
         "invoke_vijji": invoke_vijji,
         "invoke_vijjii": invoke_vijjii,
+        "invoke_vji": invoke_vji,
         "invoke_vjiiii": invoke_vjiiii,
         "invoke_vjji": invoke_vjji,
+        "JS_ScreenOrientation_eventHandler": JS_ScreenOrientation_eventHandler,
         "_JS_Cursor_SetImage": _JS_Cursor_SetImage,
         "_JS_Cursor_SetShow": _JS_Cursor_SetShow,
         "_JS_Eval_ClearInterval": _JS_Eval_ClearInterval,
@@ -14616,6 +14681,8 @@ function unityFramework(Module) {
         "_JS_FileSystem_Sync": _JS_FileSystem_Sync,
         "_JS_Log_Dump": _JS_Log_Dump,
         "_JS_Log_StackTrace": _JS_Log_StackTrace,
+        "_JS_ScreenOrientation_DeInit": _JS_ScreenOrientation_DeInit,
+        "_JS_ScreenOrientation_Init": _JS_ScreenOrientation_Init,
         "_JS_Sound_Create_Channel": _JS_Sound_Create_Channel,
         "_JS_Sound_GetLength": _JS_Sound_GetLength,
         "_JS_Sound_GetLoadState": _JS_Sound_GetLoadState,
@@ -14630,6 +14697,7 @@ function unityFramework(Module) {
         "_JS_Sound_SetListenerPosition": _JS_Sound_SetListenerPosition,
         "_JS_Sound_SetLoop": _JS_Sound_SetLoop,
         "_JS_Sound_SetLoopPoints": _JS_Sound_SetLoopPoints,
+        "_JS_Sound_SetPaused": _JS_Sound_SetPaused,
         "_JS_Sound_SetPitch": _JS_Sound_SetPitch,
         "_JS_Sound_SetPosition": _JS_Sound_SetPosition,
         "_JS_Sound_SetVolume": _JS_Sound_SetVolume,
@@ -14722,6 +14790,7 @@ function unityFramework(Module) {
         "_clock_gettime": _clock_gettime,
         "_difftime": _difftime,
         "_dlclose": _dlclose,
+        "_dlerror": _dlerror,
         "_dlopen": _dlopen,
         "_dlsym": _dlsym,
         "_emscripten_asm_const_i": _emscripten_asm_const_i,
@@ -14736,7 +14805,6 @@ function unityFramework(Module) {
         "_emscripten_get_canvas_element_size_main_thread": _emscripten_get_canvas_element_size_main_thread,
         "_emscripten_get_fullscreen_status": _emscripten_get_fullscreen_status,
         "_emscripten_get_gamepad_status": _emscripten_get_gamepad_status,
-        "_emscripten_get_main_loop_timing": _emscripten_get_main_loop_timing,
         "_emscripten_get_now": _emscripten_get_now,
         "_emscripten_get_now_is_monotonic": _emscripten_get_now_is_monotonic,
         "_emscripten_get_now_res": _emscripten_get_now_res,
@@ -15534,14 +15602,17 @@ function unityFramework(Module) {
     var __GLOBAL__sub_I_Runtime_Serialize_TransferFunctions_1_cpp = Module["__GLOBAL__sub_I_Runtime_Serialize_TransferFunctions_1_cpp"] = (function () {
         return Module["asm"]["__GLOBAL__sub_I_Runtime_Serialize_TransferFunctions_1_cpp"].apply(null, arguments)
     });
+    var __GLOBAL__sub_I_Runtime_Shaders_0_cpp = Module["__GLOBAL__sub_I_Runtime_Shaders_0_cpp"] = (function () {
+        return Module["asm"]["__GLOBAL__sub_I_Runtime_Shaders_0_cpp"].apply(null, arguments)
+    });
     var __GLOBAL__sub_I_Runtime_Shaders_1_cpp = Module["__GLOBAL__sub_I_Runtime_Shaders_1_cpp"] = (function () {
         return Module["asm"]["__GLOBAL__sub_I_Runtime_Shaders_1_cpp"].apply(null, arguments)
     });
-    var __GLOBAL__sub_I_Runtime_Shaders_3_cpp = Module["__GLOBAL__sub_I_Runtime_Shaders_3_cpp"] = (function () {
-        return Module["asm"]["__GLOBAL__sub_I_Runtime_Shaders_3_cpp"].apply(null, arguments)
+    var __GLOBAL__sub_I_Runtime_Shaders_4_cpp = Module["__GLOBAL__sub_I_Runtime_Shaders_4_cpp"] = (function () {
+        return Module["asm"]["__GLOBAL__sub_I_Runtime_Shaders_4_cpp"].apply(null, arguments)
     });
-    var __GLOBAL__sub_I_Runtime_Shaders_GpuPrograms_0_cpp = Module["__GLOBAL__sub_I_Runtime_Shaders_GpuPrograms_0_cpp"] = (function () {
-        return Module["asm"]["__GLOBAL__sub_I_Runtime_Shaders_GpuPrograms_0_cpp"].apply(null, arguments)
+    var __GLOBAL__sub_I_Runtime_Shaders_5_cpp = Module["__GLOBAL__sub_I_Runtime_Shaders_5_cpp"] = (function () {
+        return Module["asm"]["__GLOBAL__sub_I_Runtime_Shaders_5_cpp"].apply(null, arguments)
     });
     var __GLOBAL__sub_I_Runtime_Shaders_ShaderImpl_2_cpp = Module["__GLOBAL__sub_I_Runtime_Shaders_ShaderImpl_2_cpp"] = (function () {
         return Module["asm"]["__GLOBAL__sub_I_Runtime_Shaders_ShaderImpl_2_cpp"].apply(null, arguments)
@@ -15678,8 +15749,8 @@ function unityFramework(Module) {
     var ___cxx_global_var_init_18 = Module["___cxx_global_var_init_18"] = (function () {
         return Module["asm"]["___cxx_global_var_init_18"].apply(null, arguments)
     });
-    var ___cxx_global_var_init_18_1173 = Module["___cxx_global_var_init_18_1173"] = (function () {
-        return Module["asm"]["___cxx_global_var_init_18_1173"].apply(null, arguments)
+    var ___cxx_global_var_init_18_1176 = Module["___cxx_global_var_init_18_1176"] = (function () {
+        return Module["asm"]["___cxx_global_var_init_18_1176"].apply(null, arguments)
     });
     var ___cxx_global_var_init_19 = Module["___cxx_global_var_init_19"] = (function () {
         return Module["asm"]["___cxx_global_var_init_19"].apply(null, arguments)
@@ -15693,14 +15764,14 @@ function unityFramework(Module) {
     var ___cxx_global_var_init_23 = Module["___cxx_global_var_init_23"] = (function () {
         return Module["asm"]["___cxx_global_var_init_23"].apply(null, arguments)
     });
-    var ___cxx_global_var_init_3785 = Module["___cxx_global_var_init_3785"] = (function () {
-        return Module["asm"]["___cxx_global_var_init_3785"].apply(null, arguments)
+    var ___cxx_global_var_init_3804 = Module["___cxx_global_var_init_3804"] = (function () {
+        return Module["asm"]["___cxx_global_var_init_3804"].apply(null, arguments)
     });
-    var ___cxx_global_var_init_7695 = Module["___cxx_global_var_init_7695"] = (function () {
-        return Module["asm"]["___cxx_global_var_init_7695"].apply(null, arguments)
+    var ___cxx_global_var_init_62 = Module["___cxx_global_var_init_62"] = (function () {
+        return Module["asm"]["___cxx_global_var_init_62"].apply(null, arguments)
     });
-    var ___cxx_global_var_init_8852 = Module["___cxx_global_var_init_8852"] = (function () {
-        return Module["asm"]["___cxx_global_var_init_8852"].apply(null, arguments)
+    var ___cxx_global_var_init_8889 = Module["___cxx_global_var_init_8889"] = (function () {
+        return Module["asm"]["___cxx_global_var_init_8889"].apply(null, arguments)
     });
     var ___cxx_global_var_init_89 = Module["___cxx_global_var_init_89"] = (function () {
         return Module["asm"]["___cxx_global_var_init_89"].apply(null, arguments)
@@ -15708,8 +15779,8 @@ function unityFramework(Module) {
     var ___cxx_global_var_init_9 = Module["___cxx_global_var_init_9"] = (function () {
         return Module["asm"]["___cxx_global_var_init_9"].apply(null, arguments)
     });
-    var ___cxx_global_var_init_9248 = Module["___cxx_global_var_init_9248"] = (function () {
-        return Module["asm"]["___cxx_global_var_init_9248"].apply(null, arguments)
+    var ___cxx_global_var_init_9298 = Module["___cxx_global_var_init_9298"] = (function () {
+        return Module["asm"]["___cxx_global_var_init_9298"].apply(null, arguments)
     });
     var ___emscripten_environ_constructor = Module["___emscripten_environ_constructor"] = (function () {
         return Module["asm"]["___emscripten_environ_constructor"].apply(null, arguments)
@@ -15894,6 +15965,9 @@ function unityFramework(Module) {
     var dynCall_fii = Module["dynCall_fii"] = (function () {
         return Module["asm"]["dynCall_fii"].apply(null, arguments)
     });
+    var dynCall_fiiffi = Module["dynCall_fiiffi"] = (function () {
+        return Module["asm"]["dynCall_fiiffi"].apply(null, arguments)
+    });
     var dynCall_fiifi = Module["dynCall_fiifi"] = (function () {
         return Module["asm"]["dynCall_fiifi"].apply(null, arguments)
     });
@@ -15954,9 +16028,6 @@ function unityFramework(Module) {
     var dynCall_iifii = Module["dynCall_iifii"] = (function () {
         return Module["asm"]["dynCall_iifii"].apply(null, arguments)
     });
-    var dynCall_iifiii = Module["dynCall_iifiii"] = (function () {
-        return Module["asm"]["dynCall_iifiii"].apply(null, arguments)
-    });
     var dynCall_iii = Module["dynCall_iii"] = (function () {
         return Module["asm"]["dynCall_iii"].apply(null, arguments)
     });
@@ -15980,6 +16051,9 @@ function unityFramework(Module) {
     });
     var dynCall_iiii = Module["dynCall_iiii"] = (function () {
         return Module["asm"]["dynCall_iiii"].apply(null, arguments)
+    });
+    var dynCall_iiiifi = Module["dynCall_iiiifi"] = (function () {
+        return Module["asm"]["dynCall_iiiifi"].apply(null, arguments)
     });
     var dynCall_iiiifii = Module["dynCall_iiiifii"] = (function () {
         return Module["asm"]["dynCall_iiiifii"].apply(null, arguments)
@@ -16077,9 +16151,6 @@ function unityFramework(Module) {
     var dynCall_iijjii = Module["dynCall_iijjii"] = (function () {
         return Module["asm"]["dynCall_iijjii"].apply(null, arguments)
     });
-    var dynCall_iijjiii = Module["dynCall_iijjiii"] = (function () {
-        return Module["asm"]["dynCall_iijjiii"].apply(null, arguments)
-    });
     var dynCall_iijjji = Module["dynCall_iijjji"] = (function () {
         return Module["asm"]["dynCall_iijjji"].apply(null, arguments)
     });
@@ -16173,6 +16244,9 @@ function unityFramework(Module) {
     var dynCall_vffff = Module["dynCall_vffff"] = (function () {
         return Module["asm"]["dynCall_vffff"].apply(null, arguments)
     });
+    var dynCall_vffi = Module["dynCall_vffi"] = (function () {
+        return Module["asm"]["dynCall_vffi"].apply(null, arguments)
+    });
     var dynCall_vfi = Module["dynCall_vfi"] = (function () {
         return Module["asm"]["dynCall_vfi"].apply(null, arguments)
     });
@@ -16221,6 +16295,9 @@ function unityFramework(Module) {
     var dynCall_vifi = Module["dynCall_vifi"] = (function () {
         return Module["asm"]["dynCall_vifi"].apply(null, arguments)
     });
+    var dynCall_vififiii = Module["dynCall_vififiii"] = (function () {
+        return Module["asm"]["dynCall_vififiii"].apply(null, arguments)
+    });
     var dynCall_vifii = Module["dynCall_vifii"] = (function () {
         return Module["asm"]["dynCall_vifii"].apply(null, arguments)
     });
@@ -16254,6 +16331,9 @@ function unityFramework(Module) {
     var dynCall_viifi = Module["dynCall_viifi"] = (function () {
         return Module["asm"]["dynCall_viifi"].apply(null, arguments)
     });
+    var dynCall_viififii = Module["dynCall_viififii"] = (function () {
+        return Module["asm"]["dynCall_viififii"].apply(null, arguments)
+    });
     var dynCall_viifii = Module["dynCall_viifii"] = (function () {
         return Module["asm"]["dynCall_viifii"].apply(null, arguments)
     });
@@ -16277,6 +16357,9 @@ function unityFramework(Module) {
     });
     var dynCall_viiifi = Module["dynCall_viiifi"] = (function () {
         return Module["asm"]["dynCall_viiifi"].apply(null, arguments)
+    });
+    var dynCall_viiififii = Module["dynCall_viiififii"] = (function () {
+        return Module["asm"]["dynCall_viiififii"].apply(null, arguments)
     });
     var dynCall_viiifii = Module["dynCall_viiifii"] = (function () {
         return Module["asm"]["dynCall_viiifii"].apply(null, arguments)
@@ -16403,6 +16486,9 @@ function unityFramework(Module) {
     });
     var dynCall_vijjii = Module["dynCall_vijjii"] = (function () {
         return Module["asm"]["dynCall_vijjii"].apply(null, arguments)
+    });
+    var dynCall_vji = Module["dynCall_vji"] = (function () {
+        return Module["asm"]["dynCall_vji"].apply(null, arguments)
     });
     var dynCall_vjiiii = Module["dynCall_vjiiii"] = (function () {
         return Module["asm"]["dynCall_vjiiii"].apply(null, arguments)
